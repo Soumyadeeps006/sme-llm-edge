@@ -1,0 +1,14 @@
+# SME-Optimized Local LLM Server Configuration
+
+model_path: model/llama4-7b.sme
+host: 0.0.0.0
+port: 8080
+
+# Generation settings
+max_tokens: 50
+temperature: 0.7
+
+# Engine features
+use_sme: true
+use_sve2: true
+num_threads: 8
