@@ -34,4 +34,4 @@ edge_ai_project/
 6. Run the inference server (`./server/llm_server`).
 
 ## License
-© 2026 Your Name. MIT License.
+© 2026 Soumyadeep Saha. MIT License.``
