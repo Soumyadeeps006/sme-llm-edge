@@ -1,11 +1,6 @@
-[package]
-name = "rust_sme"
-version = "0.1.0"
-edition = "2021"
-
-[lib]
-name = "rust_sme"
-crate-type = ["staticlib"]
-
-[dependencies]
-libc = "0.2"
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [
+    "-C", "target-feature=+sme,+sve,+sve2",
+    "-C", "opt-level=3"
+]
