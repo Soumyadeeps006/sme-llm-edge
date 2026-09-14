@@ -1,0 +1,6 @@
+﻿Configuration,Throughput (tok/s),"Latency (TTFT, ms)",Memory Footprint,Notes
+Baseline (Naive),12.4,450,8.2 GB,"Standard PagedAttention, no speculation"
++ MTP Speculative (Day 36),18.7,310,8.4 GB,~50% throughput gain via multi-token prediction
++ FlashDecoding (Day 37),24.1,215,8.4 GB,Optimized long-context prefill
++ Zero-Copy HTTP (Day 37),26.3,190,8.3 GB,Eliminated serialization overhead
+v1.0.0 Final (Day 39),26.3,190,8.3 GB,"Production-hardened, ASan-validated, memory-safe"
