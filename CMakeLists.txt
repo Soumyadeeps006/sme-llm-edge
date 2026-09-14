@@ -1,57 +1,67 @@
 cmake_minimum_required(VERSION 3.15)
-project(EdgeAIProject CXX C)
+project(EdgeAIServer VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Compile flags and options
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    message(STATUS "Configuring for ARM64 with SME and SVE2 support")
-    # Using armv8.6-a+sve2+sme for targeting Neoverse V3 or similar cores
-    add_compile_options(-march=armv8.6-a+sve2+sme -O3 -Wall -Wextra)
-else()
-    message(STATUS "Configuring for host architecture (${CMAKE_SYSTEM_PROCESSOR}) with portable fallbacks")
-    add_compile_options(-O3 -Wall -Wextra)
+set(RUST_LIB_PATH "${CMAKE_SOURCE_DIR}/src/sme_kernel/rust_sme/target/aarch64-unknown-linux-gnu/release/librust_sme.a")
+if(NOT EXISTS ${RUST_LIB_PATH})
+    message(FATAL_ERROR "Rust static library not found. Run: cd src/sme_kernel/rust_sme && cargo build --release")
 endif()
 
-# Rust static library integration
-if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
-    set(RUST_TARGET "aarch64-unknown-linux-gnu")
-    set(RUST_LIB_PATH "${CMAKE_CURRENT_BINARY_DIR}/rust_target/${RUST_TARGET}/release/librust_sme.a")
-    set(CARGO_ARGS --target ${RUST_TARGET})
-else()
-    set(RUST_LIB_PATH "${CMAKE_CURRENT_BINARY_DIR}/rust_target/release/librust_sme.a")
-    set(CARGO_ARGS "")
-endif()
+find_package(Threads REQUIRED)
+find_package(OpenMP REQUIRED)
 
-add_custom_command(
-    OUTPUT ${RUST_LIB_PATH}
-    COMMAND cargo build --release ${CARGO_ARGS} --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust_target
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/sme_kernel/rust_sme
-    COMMENT "Building Rust static library (${RUST_LIB_PATH})"
+add_executable(edge_server 
+    server/main.cpp 
+    server/sme_gemm.cpp
+    server/model_loader.cpp
+    server/http_streaming.cpp
+    server/radix_kv_cache.cpp
+    server/paged_kv_cache.cpp
+    server/continuous_scheduler.cpp
+    server/speculative_decoder.cpp
+    server/chunked_prefill.cpp
+    server/paged_attention.cpp
+    server/inference_queue.cpp
+    server/sve_packing.cpp
+    server/pipeline_manager.cpp
+    server/early_exit_tracker.cpp
+    server/tome_tracker.cpp             
+    server/eviction_tracker.cpp         
+    server/flash_decoding_tracker.cpp   
+    server/mtp_heads.cpp                
 )
-add_custom_target(rust_sme_lib DEPENDS ${RUST_LIB_PATH})
 
-add_library(rust_sme STATIC IMPORTED GLOBAL)
-set_target_properties(rust_sme PROPERTIES
-    IMPORTED_LOCATION ${RUST_LIB_PATH}
+target_link_libraries(edge_server PRIVATE 
+    ${RUST_LIB_PATH}
+    Threads::Threads
+    dl
+    m
+    OpenMP::OpenMP_CXX
 )
-add_dependencies(rust_sme rust_sme_lib)
 
-# C++ SME Kernel library
-add_library(sme_kernel STATIC src/sme_kernel/sme_gemm.cpp)
-target_include_directories(sme_kernel PUBLIC src/sme_kernel)
+target_include_directories(edge_server PRIVATE 
+    ${CMAKE_SOURCE_DIR}/server
+    ${CMAKE_SOURCE_DIR}/src/sme_kernel/rust_sme/src
+)
 
-# Inference Server Executable
-add_executable(llm_server server/main.cpp)
-target_link_libraries(llm_server PRIVATE sme_kernel rust_sme)
-if(NOT WIN32)
-    target_link_libraries(llm_server PRIVATE pthread dl)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(edge_server PRIVATE -O3 -march=native)
 endif()
 
-# Benchmarks
-add_executable(benchmark_sme benchmarks/benchmark_sme.cpp)
-target_link_libraries(benchmark_sme PRIVATE sme_kernel rust_sme)
-if(NOT WIN32)
-    target_link_libraries(llm_server PRIVATE pthread dl)
+# ==============================================================================
+# Day 38: AddressSanitizer (ASan) Build Configuration
+# ==============================================================================
+if(CMAKE_BUILD_TYPE STREQUAL "ASAN")
+    message(STATUS "🛡️  Building with AddressSanitizer (ASan) enabled")
+    target_compile_options(edge_server PRIVATE 
+        -fsanitize=address 
+        -fno-omit-frame-pointer 
+        -g 
+        -O1
+    )
+    target_link_options(edge_server PRIVATE 
+        -fsanitize=address
+    )
 endif()

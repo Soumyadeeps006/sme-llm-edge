@@ -1,5 +1,4 @@
 # SME-Optimized Local LLM Server Configuration
-
 model_path: model/llama4-7b.sme
 host: 0.0.0.0
 port: 8080
