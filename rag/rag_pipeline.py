@@ -5,7 +5,6 @@ import json
 import urllib.request
 import re
 
-# Simple RAG pipeline using standard library to avoid external dependencies
 class SimpleRAG:
     def __init__(self, server_url="http://localhost:8080/generate"):
         self.server_url = server_url
@@ -21,7 +20,6 @@ class SimpleRAG:
         with open(doc_path, 'r', encoding='utf-8') as f:
             content = f.read()
             
-        # Basic chunking: split by double newline or sentences
         self.documents.append(content)
         raw_chunks = re.split(r'\n\n|\.\s', content)
         for chunk in raw_chunks:
@@ -31,7 +29,6 @@ class SimpleRAG:
         print(f"Loaded {len(self.chunks)} chunks.")
 
     def compute_similarity(self, query, chunk):
-        # Basic keyword overlap / tf-idf similarity using word sets
         query_words = set(re.findall(r'\w+', query.lower()))
         chunk_words = set(re.findall(r'\w+', chunk.lower()))
         if not query_words or not chunk_words:
@@ -49,7 +46,6 @@ class SimpleRAG:
         scores.sort(key=lambda x: x[0], reverse=True)
         retrieved = [chunk for score, chunk in scores[:top_k] if score > 0]
         
-        # Fallback to first chunk if none overlap
         if not retrieved and self.chunks:
             retrieved = [self.chunks[0]]
             
@@ -73,9 +69,7 @@ class SimpleRAG:
     def ask(self, query):
         contexts = self.retrieve(query)
         context_str = "\n".join(contexts)
-        
         prompt = f"context: {context_str} query: {query}"
-        # Keep prompt simple to match model's vocabulary
         print(f"Formulated prompt: {prompt}")
         
         response = self.query_llm(prompt)
@@ -83,7 +77,6 @@ class SimpleRAG:
         return response
 
 if __name__ == "__main__":
-    # Create simple mock knowledge base file if not exists
     kb_file = "kb.txt"
     if not os.path.exists(kb_file):
         with open(kb_file, 'w', encoding='utf-8') as f:
