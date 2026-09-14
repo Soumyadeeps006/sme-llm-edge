@@ -1,37 +1,92 @@
-# SME‑Optimized Local LLM Home Server
+# SME-Optimized Local LLM Home Server (v1.0.0)
 
-This repository implements a low‑power ARM home server that runs a 7‑14 B LLM (e.g., Llama 4) with custom C++/Rust kernels leveraging ARM SME/SVE2 instructions for high‑throughput inference.
+This repository implements a low-power ARM home server capable of running 7B–14B parameter LLMs (e.g., Llama 3/4) with custom C++/Rust kernels. It leverages ARM SME/SVE2 instructions for high-throughput, memory-safe, and continuous-batched inference at the edge.
 
-## Directory Layout
-```
-edge_ai_project/
-├─ hardware_spec.md          # Board specifications and power budget
-├─ flash_image.sh            # Flash Ubuntu 22.04 onto the board
-├─ cross_toolchain.md        # Cross‑compilation toolchain setup
-├─ docker_cross_env/
-│   └─ Dockerfile            # Docker environment for reproducible builds
-├─ src/
-│   └─ sme_kernel/           # C++/Rust kernel sources
-├─ CMakeLists.txt            # Build configuration
-├─ benchmarks/
-│   └─ benchmark_sme.cpp     # Micro‑benchmark for kernels
-├─ convert_model.py          # Model conversion & quantization script
-├─ model/README.md           # Model metadata
-├─ server/                   # HTTP inference server source
-├─ config.yaml               # Runtime configuration
-├─ rag/                      # Optional Retrieval‑Augmented Generation pipeline
-├─ docs/                     # Documentation
-├─ tests/                    # Unit and integration tests
-└─ .github/workflows/ci.yml # CI pipeline
+## 🏗️ Architecture Diagram
+
+```mermaid
+graph TD
+    A[Client: HTTP Streaming Request] -->|Zero-Copy HTTP| B(Continuous Scheduler)
+    B --> C{Routing Logic}
+    C -->|Long Context| D[FlashDecoding Tracker]
+    C -->|Speculative Decode| E[MTP Heads Draft Generation]
+    C -->|Standard Decode| F[Paged Attention Kernel]
+    E --> G[Speculative Decoder: Verify & Update]
+    F --> H[Paged KV Cache]
+    H --> I[Eviction Tracker / ToMe Merge]
+    D & G & F --> J[Rust SME/SVE2 Kernels]
+    J -->|FFI Boundary| K[ARM Hardware: SVE2 Vector Units]
 ```
 
-## Getting Started
-1. Review `hardware_spec.md` and procure the board.
-2. Flash Ubuntu 22.04 LTS using `flash_image.sh`.
-3. Set up the cross‑compilation environment per `cross_toolchain.md`.
-4. Build the kernels and server (`mkdir build && cd build && cmake .. && make`).
-5. Convert the LLM model with `python3 convert_model.py`.
-6. Run the inference server (`./server/llm_server`).
+---
 
-## License
-© 2026 Soumyadeep Saha. MIT License.``
+## 📂 Directory Layout
+```text
+    edge_ai_project/
+├── CMakeLists.txt                 # Main build configuration (includes ASAN support)
+├── aarch64-toolchain.cmake        # Cross-compilation toolchain definition
+├── README.md                      # This file
+├── LICENSE                        # MIT License
+├── .gitignore                     # Git ignore rules
+├── docker_cross_env/
+│   └── Dockerfile                 # Multi-stage Docker build (Builder + Stripped Runtime)
+├── server/                        # C++ HTTP inference server & scheduling logic
+│   ├── continuous_scheduler.cpp   # Day 37/38: Unified decode dispatch & hardened eviction
+│   ├── mtp_heads.cpp              # Day 36/38: MTP speculative draft generation
+│   ├── eviction_tracker.cpp       # Day 38: Hardened KV cache eviction
+│   └── ...                        # Other core server modules
+├── src/sme_kernel/rust_sme/       # Rust SVE2/SME optimized kernels
+│   ├── Cargo.toml
+│   └── src/lib.rs                 # FFI exports with panic-handling guarantees
+├── benchmark/
+│   ├── benchmark_e2e_throughput.py # End-to-end throughput testing
+│   └── benchmark_mtp_speedup.py    # MTP speculative decoding speedup metrics
+├── scripts/
+│   └── run_asan_check.sh          # Day 38: Automated AddressSanitizer validation script
+└── config.yaml                    # Runtime configuration
+```
+
+---
+
+## 🚀 Getting Started
+
+### Prerequisites
+- Ubuntu 22.04 LTS (or equivalent Debian-based system)
+- CMake ≥ 3.15, Ninja, GCC/Clang
+- Rust toolchain (with aarch64-unknown-linux-gnu target for cross-compilation)
+
+### Standard Release Build
+```bash
+# 1. Build the Rust SVE2/SME kernels
+cd src/sme_kernel/rust_sme
+cargo build --release --target aarch64-unknown-linux-gnu
+cd ../../..
+
+# 2. Configure and build the C++ server
+mkdir -p build && cd build
+cmake -DCMAKE_TOOLCHAIN_FILE=../aarch64-toolchain.cmake -DCMAKE_BUILD_TYPE=Release ..
+make -j$(nproc)
+```
+
+---
+
+## 🛡️ Memory Safety Validation (AddressSanitizer)
+To guarantee zero memory leaks, use-after-free, or buffer overflows before deployment:
+```bash
+chmod +x scripts/run_asan_check.sh
+./scripts/run_asan_check.sh
+```
+
+---
+
+## 📊 Benchmark Results
+See [Benchmark.csv](Benchmark.csv) for detailed performance metrics.
+
+---
+
+## 🐳 Docker Deployment
+Build the optimized, multi-stage Docker image (final binary is stripped of debug symbols):
+```bash
+docker build -f docker_cross_env/Dockerfile -t edge-ai-server:v1.0.0 .
+docker run -p 8080:8080 --rm edge-ai-server:v1.0.0
+```
